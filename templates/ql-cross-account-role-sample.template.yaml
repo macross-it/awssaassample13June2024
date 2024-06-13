@@ -1,0 +1,62 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Sample CloudFormation template showing dynamic references to AWS Secrets Manager for a cross account role use case. (qs-000000000)
+Metadata: 
+  AWS::CloudFormation::Interface: 
+    ParameterGroups: 
+      - 
+        Label: 
+          default: "Quick Launch deployment parameters group name"
+        Parameters: 
+          - SampleProductDeploymentParameters
+    ParameterLabels: 
+      SampleProductDeploymentParameters: 
+        default: "Quick Launch deployment parameter label"
+Parameters:
+  SampleProductDeploymentParameters:
+    Description: This should contain the Amazon Resource Name (ARN) for the Secrets Manager secret creatd by the PutDeployment Parameter API
+    Type: String
+Resources:
+  S3Bucket:
+    Type: 'AWS::S3::Bucket'
+    Properties:
+      BucketName:
+        Fn::Sub:
+        - "{{resolve:secretsmanager:${inputParameter}:SecretString:BucketName}}"
+        - inputParameter: 
+            Ref: SampleProductDeploymentParameters
+  CrossAccountS3AccessRole:
+    Type: AWS::IAM::Role
+    Properties:
+     RoleName: "SampleProductS3AccessRole"
+     AssumeRolePolicyDocument:
+      Version: "2012-10-17"
+      Statement:
+       - Effect: Allow
+         Principal:
+           AWS:
+            Fn::Sub:
+            - "{{resolve:secretsmanager:${inputParameter}:SecretString:PrincipalARN}}"
+            - inputParameter: 
+                Ref: SampleProductDeploymentParameters
+         Action: sts:AssumeRole
+         Condition: 
+           StringEquals:
+             sts:ExternalId:
+              Fn::Sub:
+              - "{{resolve:secretsmanager:${inputParameter}:SecretString:ExternalID}}"
+              - inputParameter: 
+                  Ref: SampleProductDeploymentParameters
+     Path: "/"
+     Policies:
+       - PolicyName: S3BucketAccess
+         PolicyDocument:
+           Version: "2012-10-17"
+           Statement:
+             - Effect: Allow
+               Action:
+                 - s3:List*
+               Resource:
+                Fn::Sub:
+                - "arn:${AWS::Partition}:s3:::${inputParameter}*"
+                - inputParameter:
+                    Ref: S3Bucket
